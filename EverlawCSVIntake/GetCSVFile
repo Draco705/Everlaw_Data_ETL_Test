@@ -1,0 +1,211 @@
+import os
+import csv
+import mysql.connector
+from mysql.connector import errorcode
+
+DB_NAME = 'everlaw_test'
+
+TABLES = {}
+INSERT = {}
+FIELDS = {}
+METRIC_ID = {}
+
+FIELDS['user'] = ('user_id', 'user_age', 'user_title', 'user_region', 'user_org',)
+FIELDS['Region'] = ('user_region')
+FIELDS['metric'] = ('metric_name')
+FIELDS['title'] = ('user_title')
+FIELDS['purpose'] = ('project_purpose')
+
+TABLES['user'] = (
+    "CREATE TABLE user ("
+    "ID INT NOT NULL,"
+    "Age INT NOT NULL,"
+    "TitleID INT NOT NULL,"
+    "RegionID INT NOT NULL,"
+    "CompanyID INT NOT NULL,"
+    "primary key (id),"
+    "constraint user_region foreign key (RegionID) REFERENCES 'Region' (ID)"
+    "constraint user_title foreign key (TitleID) REFERENCES 'Title' (ID)"
+    ");"
+)
+TABLES['project'] = (
+    "CREATE TABLE project ("
+    "ID INT not null,"
+    "OwnerID INT NOT NULL,"
+    "Multiple BIT NOT NULL default(0),"
+    "PurposeID INT NOT NULL,"
+    "primary key (ID),"
+    "CONSTRAINT proj_owner_user FOREIGN KEY (OwnerID)"
+    "references 'user' (id)"
+    ");"
+)
+TABLES['region'] = (
+    "CREATE TABLE Region ("
+    "ID INT NOT NULL AUTO_INCREMENT,"
+    "Region VARCHAR(4) NOT NULL,"
+    "PRIMARY KEY (ID),"
+    "unique key (Region)"
+    ");"
+)
+
+TABLES['actionaudit'] = (
+    "CREATE TABLE actionaudit ("
+    "ID INT not null auto_increment,"
+    "ProjectID INT NOT NULL,"
+    "MetricID INT NOT NULL,"
+    "MetricValue int,"
+    "ActionDate DATETIME,"
+    "UserID int,"
+    "PRIMARY KEY (ID),"
+    "CONSTRAINT action_user foreign key (UserID) references 'user' (id),"
+    "CONSTRAINT action_metric FOREIGN KEY (MetricID) REFERENCES 'metric' (id),"
+    "CONSTRAINT action_project FOREIGN KEY (ProjectID) REFERENCES 'project' (id)"
+    ")"
+)
+TABLES['metric'] = (
+    "create TABLE Metric ("
+    "ID INT NOT NULL auto_increment,"
+    "MetricName VARCHAR(50),"
+    "PRIMARY KEY (ID),"
+    "UNIQUE KEY (MetricName)"
+    ");"
+)
+
+TABLES['title'] = (
+    "create TABLE Title ("
+    "ID INT NOT NULL,"
+    "TITLE_NAME VARCHAR(50),"
+    "PRIMARY KEY (ID),"
+    "UNIQUE KEY (TITLE_NAME)"
+    ");"
+)
+
+TABLES['purpose'] = (
+    "CREATE TABLE Purpose ("
+    "ID INT NOT NULL AUTO_INCREMENT,"
+    "PURPOSE_NAME VARCHAR(40),"
+    "PRIMARY KEY (ID),"
+    "UNIQUE KEY (PURPOSE_NAME)"
+    ");"
+)
+
+INSERT['user'] = (
+    "INSERT INTO user (Id, Age, TitleID, RegionID, CompanyID "
+    "VALUES (%s, %s, %s, %s, %s)"
+)
+INSERT['project'] = (
+    "INSERT INTO project (Id, OwnerID, Multiple, PurposeID) "
+    "VALUES (%s, %s, %s, %s)"
+)
+INSERT['metric'] = (
+    "INSERT INTO metric (MetricName) "
+    "VALUES ({})"
+)
+INSERT['region'] = (
+    "INSERT INTO region (Region) "
+    "VALUES (%s)"
+)
+INSERT['actionaudit'] = (
+    "INSERT INTO actionaudit (ProjectID, MetricID, MetricValue, ActionDate, UserID) "
+    "VALUES (%s, %s, %s, %s, %s)"
+)
+INSERT['title'] = (
+    """INSERT INTO title (TITLE_NAME) """
+    """VALUES (%s)"""
+)
+
+
+def CheckTableInputData(table_name, cursor, connector, csv_dreader):
+    try:
+        print("Creating Table {}: ".format(table_name))
+        cursor.execute(TABLES[table_name])
+    except mysql.connector.Error as error:
+        if error.errno == errorcode.ER_TABLE_EXISTS_ERROR:
+            print("already exists. \n")
+        else:
+            print(error.msg)
+            exit(1)
+    print("OK\n")
+    print('Adding data to table {}:'.format(table_name))
+    field = FIELDS[table_name][0]
+    print(field)
+    insert = INSERT[table_name]
+
+    cursor.execute("SELECT ID FROM everlaw.metric WHERE MetricName = " '\'' + field + '\'')
+    selid = cursor.fetchone()
+    print(selid)
+
+    for row in csv_dreader:
+        print(row[field])
+        print("SELECT ID FROM {} where MetricName = {}".format(table_name, '\'' + row[field] + '\''))
+        cursor.execute("SELECT ID FROM everlaw.metric WHERE MetricName = " '\'' + row[field] + '\'')
+        selid = cursor.fetchone()
+        if selid is None:
+            try:
+                cursor.execute(insert.format('\'' + row[field] + '\''))
+            except mysql.connector.Error as insert_error:
+                print(insert_error.errno)
+                exit(insert_error.errno)
+            else:
+                connector.commit()
+
+
+def CheckCreateDatabase(connection, cursor, database_name):
+    try:
+        cursor.execute("USE {}".format(database_name))
+    except mysql.connector.Error as error:
+        print("Database {} does not exist \n".format(database_name))
+        if error.errno == errorcode.ER_BAD_DB_ERROR:
+            try:
+                cursor.execute(
+                    "CREATE DATABASE {} DEFAULT CHARACTER SET 'utf8'".format(database_name)
+                )
+            except mysql.connector.Error as error:
+                print("Failed creating database: {}".format(error))
+                exit(1)
+            print("Database {} created successfully".format(database_name))
+            connection.database = database_name
+        else:
+            print(error)
+            exit(1)
+    else:
+        print("Database {} exists, connected successfully".format(database_name))
+
+
+def main():
+    filepath = input("Please enter a filepath: \n")
+    db_user = input("Please enter a username: \n")
+    db_password = input("Please enter a password: \n")
+    db_hostname = input("Please enter a database hostname: \n")
+    db_databasename = input("Please enter a database name: \n")
+
+    print(filepath + '\n')
+    print(db_user + ', ' + db_password + '\n')
+    print(db_hostname + '\n')
+    print(db_databasename + '\n')
+
+    try:
+        db_connect = mysql.connector.connect(user=db_user, password=db_password, host=db_hostname)
+    except mysql.connector.Error as err:
+        print("Failed to connect to server: {}".format(err) + '\n')
+    else:
+        db_cursor = db_connect.cursor(buffered=True)
+
+    ##CheckCreateDatabase(db_connect, db_cursor, db_databasename)
+
+    # check for database connection and database existence
+    # call buildtables
+
+    with open(filepath, 'r') as csv_input:
+        csvreader = csv.DictReader(csv_input)
+        print(type(csvreader))
+        #for row in csvreader:
+         #   print("for a user, the parts are:{}".format(row))
+        #CheckTableInputData('metric', db_cursor, db_connect, csvreader)
+    # print(FIELDS['user'][2])
+    db_cursor.close()
+    db_connect.close()
+
+
+if __name__ == '__main__':
+    main()
