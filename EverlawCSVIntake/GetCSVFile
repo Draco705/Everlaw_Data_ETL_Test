@@ -9,6 +9,9 @@ TABLES = {}
 INSERT = {}
 FIELDS = {}
 METRIC_ID = {}
+TITLE_ID = {}
+REGION_ID = {}
+PURPOSE_ID = {}
 
 FIELDS['user'] = ('user_id', 'user_age', 'user_title', 'user_region', 'user_org',)
 FIELDS['Region'] = ('user_region')
