@@ -99,7 +99,7 @@ INSERT['user'] = (
 )
 INSERT['project'] = (
     "INSERT INTO project (Id, OwnerID, Multiple, PurposeID) "
-    "VALUES ({},{},{},{}})"
+    "VALUES ({},{},{},{})"
 )
 INSERT['metric'] = (
     "INSERT INTO metric (MetricName) "
@@ -176,13 +176,20 @@ def BuildProject(database_name,table_name, cursor, connector, filepath):
 
     # insert data from csv dictionary reader into the table. try to select and get an id before attempting to insert
         for row in csvreader:
-            cursor.execute("SELECT ID FROM {}.user WHERE ID = {}".format(database_name, row[9]))
-            purpose_id = METRIC_ID[row[11]]
+            cursor.execute("SELECT ID FROM {}.user WHERE ID = {}".format(database_name, row['project_owner']))
+            purpose_id = METRIC_ID[row['project_purpose']]
             selid = cursor.fetchone()
-            if selid is not None:
+            cursor.execute("SELECT ID FROM {}.project WHERE ID = {}".format(database_name, row['project_id']))
+            selid2 = cursor.fetchone()
+            projid = row['project_id']
+            if row['project_multi'] == 'true':
+                multi_id = True
+            else:
+                multi_id = False
+            if selid2 is None:
                 try:
-                    cursor.execute(insert.format('\'' + row[0] + '\'', '\'' + selid + '\'', '\'' + row[10] + '\'',
-                                                 '\'' + purpose_id + '\''))
+                    print(insert.format(projid, multi_id, multi_id, purpose_id))
+                    cursor.execute(insert.format(projid, selid[0], multi_id, purpose_id))
                 except mysql.connector.Error as insert_error:
                     print(insert_error.errno)
                     exit(insert_error.errno)
@@ -209,17 +216,17 @@ def BuildAudit(database_name,table_name, cursor, connector, filepath):
 
     # insert data from csv dictionary reader into the table. try to select and get an id before attempting to insert
         for row in csvreader:
-            metric_id = METRIC_ID[row[2]]
-            cursor.execute("SELECT ID FROM {}.{} WHERE ID = {}".format(database_name, table_name, [1]))
-            selid = cursor.fetchone()
+            metric_id = METRIC_ID[row['metric_name']]
+            cursor.execute("SELECT ID FROM {}.user WHERE ID = {}".format(database_name, row['user_id']))
+            user_id = cursor.fetchone()
 
-            cursor.execute("SELECT ID FROM {}.{} WHERE ID = {}".format(database_name, table_name, [0]))
-            selid2 = cursor.fetchone()
+            cursor.execute("SELECT ID FROM {}.project WHERE ID = {}".format(database_name, row['project_id']))
+            project_id = cursor.fetchone()
 
-            if selid is not None & selid2 is not None:
+            if (project_id is not None) & (user_id is not None):
                 try:
-                    cursor.execute(insert.format('\'' + selid2 + '\'', '\'' + metric_id + '\'', '\'' + row[3] + '\'',
-                                                 '\'' + row[4] + '\'', '\'' + selid + '\''))
+                    cursor.execute(insert.format(project_id[0], metric_id, '\'' + row['metrics_value'] + '\'',
+                                                 '\'' + row['day'] + '\'', user_id[0]))
                 except mysql.connector.Error as insert_error:
                     print(insert_error.errno)
                     exit(insert_error.errno)
@@ -322,6 +329,8 @@ def main():
     CheckTableInputData(db_databasename, 'purpose', db_cursor, db_connect, filepath)
     CheckTableInputData(db_databasename, 'region', db_cursor, db_connect, filepath)
     BuildUsers(db_databasename, 'user', db_cursor, db_connect, filepath)
+    BuildProject(db_databasename, 'project', db_cursor, db_connect, filepath)
+    BuildAudit(db_databasename, 'actionaudit', db_cursor, db_connect, filepath)
     # print(FIELDS['user'][2])
     db_cursor.close()
     db_connect.close()
